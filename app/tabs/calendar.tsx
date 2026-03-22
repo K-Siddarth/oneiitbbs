@@ -1,76 +1,141 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  SafeAreaView,
-  Platform,
-  Alert,
-  TextInput,           // ← add this
-} from "react-native";
-
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { Calendar } from "react-native-calendars";
 
-export default function App() {
-  const [selectedDate, setSelectedDate] = useState("2025-07-14");
-  const [events, setEvents] = useState([
-    { id: 1, startTimestamp: "2025-07-14T21:00:00Z", endTimestamp: "2025-07-14T23:00:00Z", eventName: "Work Block 1" },
-    { id: 2, startTimestamp: "2025-07-14T23:00:00Z", endTimestamp: "2025-07-15T00:00:00Z", eventName: "Work Block 2" }
-  ]);
+import {
+  addDoc,
+  collection,
+  deleteDoc, doc,
+  getDocs
+} from "firebase/firestore";
+import { db } from "../firebase";
 
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(new Date());
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+type CalendarEvent = {
+  id: string;
+  eventName: string;
+  startTimestamp: string;
+  endTimestamp: string;
+};
 
-  const dailyEvents = events.filter(e => e.startTimestamp.startsWith(selectedDate));
+export default function CalendarScreen() {
+  const [selectedDate, setSelectedDate] = useState<string>("2025-07-14");
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const formatHM = date => {
-    let h = date.getHours(), m = date.getMinutes();
+  const [adding, setAdding] = useState<boolean>(false);
+  const [newName, setNewName] = useState<string>("");
+  const [startTime, setStartTime] = useState<Date>(new Date());
+  const [endTime, setEndTime] = useState<Date>(new Date());
+  const [showStartPicker, setShowStartPicker] = useState<boolean>(false);
+  const [showEndPicker, setShowEndPicker] = useState<boolean>(false);
+
+  // 🔹 Load events for selectedDate from Firestore
+  const fetchEvents = async (date: string) => {
+    setLoading(true);
+    try {
+      const dateDoc = doc(db, "events", date);
+      const eventsCol = collection(dateDoc, "events");
+      const snapshot = await getDocs(eventsCol);
+      const list: CalendarEvent[] = snapshot.docs.map(d => ({
+        id: d.id,
+        ...(d.data() as Omit<CalendarEvent, "id">),
+      }));
+      setEvents(list);
+    } catch (err) {
+      console.log("Error loading events:", err);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reload when date changes
+  useEffect(() => {
+    fetchEvents(selectedDate);
+  }, [selectedDate]);
+
+  const formatHM = (date: Date): string => {
+    let h: number | string = date.getHours();
+    let m: number | string = date.getMinutes();
     if (h < 10) h = "0" + h;
     if (m < 10) m = "0" + m;
     return `${h}:${m}`;
   };
 
-  const addEvent = () => {
+  // 🔹 Add event to Firestore (subcollection of selected date)
+  const addEvent = async () => {
     if (!newName.trim()) return;
-    const id = events.length + 1;
     const start = formatHM(startTime), end = formatHM(endTime);
     const startTimestamp = `${selectedDate}T${start}:00Z`;
     const endTimestamp = `${selectedDate}T${end}:00Z`;
 
-    setEvents(e => [...e, { id, startTimestamp, endTimestamp, eventName: newName }]);
-    // reset
+    try {
+      const dateDoc = doc(db, "events", selectedDate);
+      const eventsCol = collection(dateDoc, "events");
+      const docRef = await addDoc(eventsCol, {
+        startTimestamp,
+        endTimestamp,
+        eventName: newName
+      });
+      setEvents(e => [...e, { id: docRef.id, startTimestamp, endTimestamp, eventName: newName }]);
+    } catch (err) {
+      console.log("Error adding event:", err);
+    }
+
     setNewName("");
     setStartTime(new Date());
     setEndTime(new Date());
     setAdding(false);
   };
 
-  const confirmDelete = item => {
+  // 🔹 Delete event from Firestore
+  const confirmDelete = (item: CalendarEvent) => {
     Alert.alert(
       "Delete Event?",
       `${item.eventName}\n${new Date(item.startTimestamp).toLocaleTimeString()} - ${new Date(item.endTimestamp).toLocaleTimeString()}`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete", style: "destructive", onPress: () => {
-            setEvents(e => e.filter(ev => ev.id !== item.id));
+          text: "Delete", style: "destructive", onPress: async () => {
+            try {
+              const dateDoc = doc(db, "events", selectedDate);
+              const eventDoc = doc(dateDoc, "events", item.id);
+              await deleteDoc(eventDoc);
+              setEvents(e => e.filter(ev => ev.id !== item.id));
+            } catch (err) {
+              console.log("Error deleting:", err);
+            }
           }
         }
       ]
     );
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={{ textAlign: "center", marginTop: 20 }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // 🔹 Add screen
   if (adding) {
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.header}>New Event on {selectedDate}</Text>
+
         <View style={styles.field}>
           <Text style={styles.label}>Name:</Text>
           <TextInput
@@ -129,6 +194,7 @@ export default function App() {
     );
   }
 
+  // 🔹 Main screen
   return (
     <SafeAreaView style={styles.container}>
       <Calendar
@@ -137,8 +203,10 @@ export default function App() {
       />
 
       <FlatList
-        data={dailyEvents}
-        keyExtractor={i => i.id.toString()}
+        data={events.sort((a, b) =>
+          new Date(a.startTimestamp).getTime() - new Date(b.startTimestamp).getTime()
+        )}
+        keyExtractor={i => i.id}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => confirmDelete(item)}>
             <View style={styles.eventBlock}>
@@ -150,6 +218,7 @@ export default function App() {
           </TouchableOpacity>
         )}
         contentContainerStyle={{ padding: 10 }}
+        ListEmptyComponent={<Text style={{ textAlign: "center", marginTop: 20 }}>No events for this date</Text>}
       />
 
       <TouchableOpacity style={styles.fab} onPress={() => setAdding(true)}>
@@ -196,4 +265,3 @@ const styles = StyleSheet.create({
   },
   btnText: { color: "white", fontWeight: "bold" }
 });
-
