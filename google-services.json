@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "208282390520",
+    "project_id": "oneiitbbs",
+    "storage_bucket": "oneiitbbs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:208282390520:android:475cdc264d88148ed2d00d",
+        "android_client_info": {
+          "package_name": "com.oneiitbbs.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "208282390520-d81krkplg5qhfvljbl0qbn4lvhqcc1aq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDmXaltx-khfDAaljwxzLOkaHmT5ewjWKY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "208282390520-d81krkplg5qhfvljbl0qbn4lvhqcc1aq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

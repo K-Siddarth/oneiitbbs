@@ -1,267 +1,331 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { useEffect, useState } from "react";
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Platform,
-  SafeAreaView,
+  Image,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View
-} from "react-native";
-import { Calendar } from "react-native-calendars";
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../lib/AuthContext';
+import { moderateScale, scale, verticalScale } from "../../lib/responsive";
 
-import {
-  addDoc,
-  collection,
-  deleteDoc, doc,
-  getDocs
-} from "firebase/firestore";
-import { db } from "../firebase";
+const TECH_SOCIETIES = [
+  { name: 'Neuromancers', route: '/societies/neuro' },
+  { name: 'Webnd', route: '/societies/webnd' },
+  { name: 'Nakshatra', route: '/societies/nakshatra' },
+  { name: 'FEBS', route: '/societies/febs' },
+  { name: 'RISC', route: '/societies/risc' },
+];
 
-type CalendarEvent = {
-  id: string;
-  eventName: string;
-  startTimestamp: string;
-  endTimestamp: string;
-};
+const SOCIO_CULTURAL_SOCIETIES = [
+  { name: 'Kalakriti', route: '/societies/kalakriti' },
+  { name: 'Aaroh', route: '/societies/aaroh' },
+  { name: 'D Groovers', route: '/societies/dgroovers' },
+  { name: 'Fourth Wall', route: '/societies/fourthwall' },
+  { name: 'Panacea', route: '/societies/panacea' },
+  { name: 'Abhivyakti', route: '/societies/abhivyakti' },
+  { name: 'Cinewave', route: '/societies/cinewave' },
+  { name: 'Clix', route: '/societies/clix' },
+  { name: 'Souls for Solace', route: '/societies/soulsforsolace' },
+];
 
-export default function App() {
-  const [selectedDate, setSelectedDate] = useState<string>("2025-07-14");
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+export default function HomeScreen() {
+  const { user, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const colorScheme = useColorScheme();
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
 
-  const [adding, setAdding] = useState<boolean>(false);
-  const [newName, setNewName] = useState<string>("");
-  const [startTime, setStartTime] = useState<Date>(new Date());
-  const [endTime, setEndTime] = useState<Date>(new Date());
-  const [showStartPicker, setShowStartPicker] = useState<boolean>(false);
-  const [showEndPicker, setShowEndPicker] = useState<boolean>(false);
-
-  // 🔹 Load events for selectedDate from Firestore
-  const fetchEvents = async (date: string) => {
-    setLoading(true);
-    try {
-      const dateDoc = doc(db, "events", date);
-      const eventsCol = collection(dateDoc, "events");
-      const snapshot = await getDocs(eventsCol);
-      const list: CalendarEvent[] = snapshot.docs.map(d => ({
-        id: d.id,
-        ...(d.data() as Omit<CalendarEvent, "id">),
-      }));
-      setEvents(list);
-    } catch (err) {
-      console.log("Error loading events:", err);
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
+  const handleLogout = () => {
+    setProfileModalVisible(false);
+    logout();
   };
 
-  // Reload when date changes
-  useEffect(() => {
-    fetchEvents(selectedDate);
-  }, [selectedDate]);
-
-  const formatHM = (date: Date): string => {
-    let h: number | string = date.getHours();
-    let m: number | string = date.getMinutes();
-    if (h < 10) h = "0" + h;
-    if (m < 10) m = "0" + m;
-    return `${h}:${m}`;
+  const navigateToSociety = (route: string) => {
+    router.push(route as any);
   };
 
-  // 🔹 Add event to Firestore (subcollection of selected date)
-  const addEvent = async () => {
-    if (!newName.trim()) return;
-    const start = formatHM(startTime), end = formatHM(endTime);
-    const startTimestamp = `${selectedDate}T${start}:00Z`;
-    const endTimestamp = `${selectedDate}T${end}:00Z`;
-
-    try {
-      const dateDoc = doc(db, "events", selectedDate);
-      const eventsCol = collection(dateDoc, "events");
-      const docRef = await addDoc(eventsCol, {
-        startTimestamp,
-        endTimestamp,
-        eventName: newName
-      });
-      setEvents(e => [...e, { id: docRef.id, startTimestamp, endTimestamp, eventName: newName }]);
-    } catch (err) {
-      console.log("Error adding event:", err);
-    }
-
-    setNewName("");
-    setStartTime(new Date());
-    setEndTime(new Date());
-    setAdding(false);
-  };
-
-  // 🔹 Delete event from Firestore
-  const confirmDelete = (item: CalendarEvent) => {
-    Alert.alert(
-      "Delete Event?",
-      `${item.eventName}\n${new Date(item.startTimestamp).toLocaleTimeString()} - ${new Date(item.endTimestamp).toLocaleTimeString()}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete", style: "destructive", onPress: async () => {
-            try {
-              const dateDoc = doc(db, "events", selectedDate);
-              const eventDoc = doc(dateDoc, "events", item.id);
-              await deleteDoc(eventDoc);
-              setEvents(e => e.filter(ev => ev.id !== item.id));
-            } catch (err) {
-              console.log("Error deleting:", err);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={{ textAlign: "center", marginTop: 20 }}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  // 🔹 Add screen
-  if (adding) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.header}>New Event on {selectedDate}</Text>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Name:</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Event Name"
-            value={newName}
-            onChangeText={setNewName}
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Start:</Text>
-          <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.timeBox}>
-            <Text>{formatHM(startTime)}</Text>
-          </TouchableOpacity>
-        </View>
-        {showStartPicker && (
-          <DateTimePicker
-            value={startTime}
-            mode="time"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(e, d) => {
-              setShowStartPicker(false);
-              if (d) setStartTime(d);
-            }}
-          />
-        )}
-
-        <View style={styles.field}>
-          <Text style={styles.label}>End:</Text>
-          <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.timeBox}>
-            <Text>{formatHM(endTime)}</Text>
-          </TouchableOpacity>
-        </View>
-        {showEndPicker && (
-          <DateTimePicker
-            value={endTime}
-            mode="time"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            onChange={(e, d) => {
-              setShowEndPicker(false);
-              if (d) setEndTime(d);
-            }}
-          />
-        )}
-
-        <View style={styles.buttonRow}>
-          <TouchableOpacity onPress={addEvent} style={styles.saveBtn}>
-            <Text style={styles.btnText}>Save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setAdding(false)} style={styles.cancelBtn}>
-            <Text style={styles.btnText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // 🔹 Main screen
   return (
-    <SafeAreaView style={styles.container}>
-      <Calendar
-        onDayPress={day => { setSelectedDate(day.dateString); }}
-        markedDates={{ [selectedDate]: { selected: true, selectedColor: "blue" } }}
-      />
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <Modal
+        visible={profileModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setProfileModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Profile</Text>
+            <Text style={styles.modalLabel}>Name</Text>
+            <Text style={styles.modalValue}>{user?.displayName}</Text>
+            <Text style={styles.modalLabel}>Email</Text>
+            <Text style={styles.modalValue}>{user?.email}</Text>
 
-      <FlatList
-        data={events.sort((a, b) =>
-          new Date(a.startTimestamp).getTime() - new Date(b.startTimestamp).getTime()
-        )}
-        keyExtractor={i => i.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => confirmDelete(item)}>
-            <View style={styles.eventBlock}>
-              <Text style={styles.eventName}>{item.eventName}</Text>
-              <Text style={styles.eventTime}>
-                {new Date(item.startTimestamp).toLocaleTimeString()} – {new Date(item.endTimestamp).toLocaleTimeString()}
-              </Text>
-            </View>
+            <TouchableOpacity style={styles.modalButton} onPress={handleLogout}>
+              <Text style={styles.modalButtonText}>Logout</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalButtonSecondary} onPress={() => setProfileModalVisible(false)}>
+              <Text style={styles.modalButtonSecondaryText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity 
+            onPress={() => setProfileModalVisible(true)}
+            style={styles.profileImageContainer}
+          >
+            <Image 
+              source={require('@/assets/images/profile_image.jpeg')} 
+              style={styles.profileImage} 
+            />
           </TouchableOpacity>
-        )}
-        contentContainerStyle={{ padding: 10 }}
-        ListEmptyComponent={<Text style={{ textAlign: "center", marginTop: 20 }}>No events for this date</Text>}
-      />
+          <Text style={styles.appTitle}>One IITBBS App</Text>
+          <View style={styles.profilePlaceholder} />
+        </View>
 
-      <TouchableOpacity style={styles.fab} onPress={() => setAdding(true)}>
-        <Text style={styles.fabText}>＋</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
+        <View style={styles.content}>
+          <Text style={styles.welcome}>Welcome to IIT BBS</Text>
+          {/* <Text style={styles.subtitle}>Gymkhana Hub</Text> */}
+
+          {/* Tech Societies Section */}
+          <View style={styles.societiesSection}>
+            <Text style={styles.sectionTitle}>Tech Societies</Text>
+            <View style={styles.societiesGrid}>
+              {TECH_SOCIETIES.map((society, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.societyCard}
+                  onPress={() => navigateToSociety(society.route)}
+                > 
+                  <Text style={styles.societyName}>{society.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Socio Cultural Societies Section */}
+          <View style={styles.societiesSection}>
+            <Text style={styles.sectionTitle}>Socio Cultural Societies</Text>
+            <View style={styles.societiesGrid}>
+              {SOCIO_CULTURAL_SOCIETIES.map((society, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.societyCard}
+                  onPress={() => navigateToSociety(society.route)}
+                >
+                  <Text style={styles.societyName}>{society.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  fab: {
-    position: "absolute", bottom: 30, right: 30,
-    backgroundColor: "#007BFF", width: 60, height: 60, borderRadius: 30,
-    justifyContent: "center", alignItems: "center", elevation: 5
+  container: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
-  fabText: { fontSize: 30, color: "white" },
-
-  eventBlock: {
-    backgroundColor: "#add8e6", marginVertical: 5, padding: 10, borderRadius: 5
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: verticalScale(20), // Added slight padding at bottom for smooth scrolling
   },
-  eventName: { fontWeight: "bold" },
-  eventTime: { color: "#333" },
-
-  header: { fontSize: 20, fontWeight: "bold", margin: 10 },
-  field: { marginHorizontal: 10, marginVertical: 5 },
-  label: { marginBottom: 4 },
-  textInput: {
-    borderWidth: 1, borderColor: "#ccc", borderRadius: 4, padding: 8
+  content: {
+    flex: 1,
+    padding: moderateScale(20),
   },
-  timeBox: {
-    borderWidth: 1, borderColor: "#ccc", borderRadius: 4,
-    padding: 12, alignItems: "center"
+  welcome: {
+    fontSize: moderateScale(28),
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: verticalScale(10),
   },
-
-  buttonRow: {
-    flexDirection: "row", justifyContent: "space-around", marginTop: 20
+  subtitle: {
+    fontSize: moderateScale(18),
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: verticalScale(40),
   },
-  saveBtn: {
-    backgroundColor: "#28a745", padding: 12, borderRadius: 6, flex: 1, marginHorizontal: 5, alignItems: "center"
+  userInfo: {
+    backgroundColor: 'white',
+    padding: moderateScale(20),
+    borderRadius: moderateScale(10),
+    marginBottom: verticalScale(30),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: verticalScale(2) },
+    shadowOpacity: 0.1,
+    shadowRadius: moderateScale(4),
+    elevation: 3,
   },
-  cancelBtn: {
-    backgroundColor: "#dc3545", padding: 12, borderRadius: 6, flex: 1, marginHorizontal: 5, alignItems: "center"
+  userLabel: {
+    fontSize: moderateScale(16),
+    fontWeight: '600',
+    color: '#333',
+    marginTop: verticalScale(10),
   },
-  btnText: { color: "white", fontWeight: "bold" }
+  userValue: {
+    fontSize: moderateScale(16),
+    color: '#666',
+    marginBottom: verticalScale(5),
+  },
+  adminBadge: {
+    color: '#28a745',
+    fontWeight: 'bold',
+  },
+  userBadge: {
+    color: '#007bff',
+    fontWeight: 'bold',
+  },
+  societiesSection: {
+    backgroundColor: 'white',
+    padding: moderateScale(20),
+    borderRadius: moderateScale(10),
+    marginBottom: verticalScale(30),
+    // marginTop: verticalScale(200),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: verticalScale(2) },
+    shadowOpacity: 0.1,
+    shadowRadius: moderateScale(4),
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: verticalScale(20),
+    textAlign: 'center',
+  },
+  societiesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  societyCard: {
+    backgroundColor: '#f8f9fa',
+    padding: moderateScale(15),
+    borderRadius: moderateScale(8),
+    marginBottom: verticalScale(10),
+    width: '48%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  societyName: {
+    fontSize: moderateScale(16),
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(15),
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  profileButton: {
+    paddingVertical: verticalScale(8),
+    paddingHorizontal: scale(12),
+    borderRadius: moderateScale(8),
+    backgroundColor: '#007BFF',
+  },
+  profileButtonText: {
+    color: 'white',
+    fontSize: moderateScale(14),
+    fontWeight: '600',
+  },
+  profileImageContainer: {
+    width: moderateScale(40),
+    height: moderateScale(40),
+    borderRadius: moderateScale(20),
+    backgroundColor: '#007BFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: moderateScale(36),
+    height: moderateScale(36),
+    borderRadius: moderateScale(18),
+  },
+  profilePlaceholder: {
+    width: scale(70),
+  },
+  appTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: moderateScale(24),
+    borderRadius: moderateScale(12),
+    width: '85%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: 'bold',
+    marginBottom: verticalScale(16),
+  },
+  modalLabel: {
+    fontSize: moderateScale(14),
+    color: '#888',
+    marginTop: verticalScale(8),
+  },
+  modalValue: {
+    fontSize: moderateScale(16),
+    color: '#333',
+    fontWeight: '500',
+    marginBottom: verticalScale(8),
+  },
+  modalButton: {
+    marginTop: verticalScale(16),
+    width: '100%',
+    backgroundColor: '#dc3545',
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(8),
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontWeight: '700',
+  },
+  modalButtonSecondary: {
+    marginTop: verticalScale(12),
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#007bff',
+    paddingVertical: verticalScale(12),
+    borderRadius: moderateScale(8),
+    alignItems: 'center',
+  },
+  modalButtonSecondaryText: {
+    color: '#007bff',
+    fontWeight: '600',
+  },
 });

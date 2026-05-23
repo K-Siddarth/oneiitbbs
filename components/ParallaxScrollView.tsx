@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { useBottomTabOverflow } from '@/components/ui/TabBarBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { moderateScale, scale, verticalScale } from '@/lib/responsive';
 
 type Props = PropsWithChildren<{
   headerImage: ReactElement;
@@ -50,8 +51,9 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 32,
-    gap: 16,
+    padding: moderateScale(32),
+    gap: moderateScale(16),
     overflow: 'hidden',
   },
+
 });
